@@ -172,16 +172,8 @@
 <body>
 
 <div class="header">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <div>
-      <h1>My <span>Commissions</span></h1>
-      <div class="header-sub">Track every payment. Never miss a cent.</div>
-    </div>
-    <div style="display:flex;gap:6px;flex-shrink:0;">
-      <button onclick="exportData()" style="padding:7px 11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;">⬆️ Export</button>
-      <button onclick="document.getElementById('import-input').click()" style="padding:7px 11px;border-radius:10px;border:1px solid var(--accent);background:rgba(124,106,247,0.12);color:var(--accent2);font-size:12px;font-weight:700;cursor:pointer;">⬇️ Import</button>
-    </div>
-  </div>
+  <h1>My <span>Commissions</span></h1>
+  <div class="header-sub">Track every payment. Never miss a cent.</div>
 </div>
 <input type="file" id="import-input" accept=".json" style="display:none" onchange="importData(event)" />
 <div class="tabs">
@@ -199,11 +191,21 @@
 
 <!-- CLIENTS -->
 <div class="content" id="content-clients">
-  <div class="client-subtabs">
-    <button class="client-subtab active" id="subtab-active" onclick="switchClientTab('active')">⏳ In Progress</button>
-    <button class="client-subtab" id="subtab-done" onclick="switchClientTab('done')">✅ Completed</button>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+    <button class="client-subtab active" id="subtab-active" onclick="switchClientTab('active')" style="margin-bottom:0;">⏳ In Progress</button>
+    <button class="client-subtab" id="subtab-done" onclick="switchClientTab('done')" style="margin-bottom:0;">✅ Completed</button>
+    <button onclick="openDataDrawer()" style="width:38px;height:38px;flex-shrink:0;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">⋮</button>
   </div>
   <div id="clients-container"></div>
+</div>
+
+<!-- DATA DRAWER -->
+<div id="drawer-overlay" onclick="closeDataDrawer()" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:40;opacity:0;pointer-events:none;transition:opacity 0.25s;"></div>
+<div id="data-drawer" style="position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:480px;background:var(--surface);border-radius:24px 24px 0 0;padding:24px 20px 44px;z-index:45;transition:transform 0.3s;border-top:1px solid var(--border);">
+  <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 22px;"></div>
+  <div style="font-size:16px;font-weight:800;margin-bottom:20px;">Data</div>
+  <button onclick="exportData()" style="width:100%;padding:15px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:15px;font-weight:700;cursor:pointer;text-align:left;margin-bottom:10px;">⬆️ Export  <span style="font-size:12px;color:var(--muted);font-weight:500;float:right;margin-top:2px;">Save backup file</span></button>
+  <button onclick="document.getElementById('import-input').click();closeDataDrawer();" style="width:100%;padding:15px;border-radius:12px;background:rgba(124,106,247,0.1);border:1px solid rgba(124,106,247,0.3);color:var(--accent2);font-size:15px;font-weight:700;cursor:pointer;text-align:left;">⬇️ Import  <span style="font-size:12px;color:var(--muted);font-weight:500;float:right;margin-top:2px;">Load from file</span></button>
 </div>
 
 <!-- CALENDAR -->
@@ -831,6 +833,18 @@ function checkTodayReminders(){
   clients.forEach(c=>c.payments.forEach(p=>{
     if(p.date===ts&&!p.receivedByMe) new Notification('💰 Payment Due Today',{body:`${c.name} · ${p.label||'Payment'} — ${fmtAmt(p)}`});
   }));
+}
+
+// ─── DATA DRAWER ─────────────────────────────────────────
+function openDataDrawer() {
+  document.getElementById('data-drawer').style.transform = 'translateX(-50%) translateY(0)';
+  const ov = document.getElementById('drawer-overlay');
+  ov.style.opacity = '1'; ov.style.pointerEvents = 'all';
+}
+function closeDataDrawer() {
+  document.getElementById('data-drawer').style.transform = 'translateX(-50%) translateY(100%)';
+  const ov = document.getElementById('drawer-overlay');
+  ov.style.opacity = '0'; ov.style.pointerEvents = 'none';
 }
 
 // ─── EXPORT / IMPORT ─────────────────────────────────────
