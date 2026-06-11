@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="My Commissions" />
+<meta name="theme-color" content="#0f0f13" />
+<title>My Commissions</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a22;
+    --surface2: #22222e;
+    --border: #2e2e3e;
+    --accent: #7c6af7;
+    --accent2: #a599ff;
+    --green: #3ecf8e;
+    --orange: #f5a623;
+    --red: #f56342;
+    --text: #f0eeff;
+    --muted: #7a7a99;
+    --radius: 14px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; }
+
+  .header { padding: 52px 20px 16px; background: var(--bg); position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .header h1 span { color: var(--accent); }
+  .header-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .tabs { display: flex; gap: 6px; padding: 12px 20px; background: var(--bg); position: sticky; top: 89px; z-index: 10; }
+  .tab { flex: 1; padding: 8px 4px; border-radius: 10px; border: none; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .tab.active { background: var(--accent); color: white; }
+
+  .content { flex: 1; overflow-y: auto; padding: 16px 20px 100px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; margin-top: 20px; }
+  .section-title:first-child { margin-top: 0; }
+
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border-radius: var(--radius); padding: 14px; }
+  .stat-card.full { grid-column: 1 / -1; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.orange { color: var(--orange); }
+  .stat-value.purple { color: var(--accent2); }
+
+  .client-card { background: var(--surface); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; border: 1px solid var(--border); }
+  .client-header { padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .client-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: white; flex-shrink: 0; }
+  .client-info { flex: 1; min-width: 0; }
+  .client-name { font-weight: 700; font-size: 15px; }
+  .client-type { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .client-amount { text-align: right; }
+  .client-amount .amount { font-weight: 800; font-size: 16px; color: var(--green); }
+  .client-amount .pending { font-size: 11px; color: var(--orange); }
+  .chevron { color: var(--muted); font-size: 12px; margin-left: 4px; transition: transform 0.2s; }
+  .chevron.open { transform: rotate(90deg); }
+
+  .client-detail { border-top: 1px solid var(--border); padding: 14px 16px; display: none; }
+  .client-detail.open { display: block; }
+  .payment-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .payment-row:last-child { border-bottom: none; }
+  .payment-num { width: 28px; height: 28px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--muted); flex-shrink: 0; margin-top: 2px; }
+  .payment-info { flex: 1; }
+  .payment-date { font-size: 13px; font-weight: 600; }
+  .payment-amount { font-size: 12px; color: var(--muted); }
+  .payment-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+  .badge { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 20px; }
+  .badge.sent { background: rgba(62,207,142,0.15); color: var(--green); }
+  .badge.not-sent { background: rgba(245,163,35,0.15); color: var(--orange); }
+  .badge.received { background: rgba(124,106,247,0.15); color: var(--accent2); }
+  .badge.not-received { background: rgba(245,99,66,0.15); color: var(--red); }
+  .badge.pif { background: rgba(62,207,142,0.1); color: var(--green); border: 1px solid rgba(62,207,142,0.3); }
+  .badge.monthly { background: rgba(124,106,247,0.1); color: var(--accent2); border: 1px solid rgba(124,106,247,0.3); }
+  .payment-actions { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; flex-shrink: 0; }
+  .toggle-btn { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .toggle-btn:active { opacity: 0.7; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 8px; border: none; background: var(--surface2); color: var(--muted); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .icon-btn.del { border: 1px solid rgba(245,99,66,0.3); background: rgba(245,99,66,0.1); color: var(--red); }
+  .icon-btn.edit { border: 1px solid rgba(124,106,247,0.3); background: rgba(124,106,247,0.1); color: var(--accent2); }
+  .delete-client-btn { padding: 10px; border-radius: 8px; border: 1px solid rgba(245,99,66,0.3); background: rgba(245,99,66,0.1); color: var(--red); font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 12px; width: 100%; }
+
+  /* CLIENT SUB-TABS */
+  .client-subtabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .client-subtab { flex: 1; padding: 8px; border-radius: 10px; border: none; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .client-subtab.active { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+  .fab { position: fixed; bottom: 84px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--accent); border: none; color: white; font-size: 26px; cursor: pointer; box-shadow: 0 4px 20px rgba(124,106,247,0.5); display: flex; align-items: center; justify-content: center; z-index: 20; transition: transform 0.15s; }
+  .fab:active { transform: scale(0.93); }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 50; display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--surface); border-radius: 24px 24px 0 0; width: 100%; max-width: 480px; padding: 24px 20px 40px; transform: translateY(30px); transition: transform 0.25s; max-height: 90vh; overflow-y: auto; }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 20px; }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 20px; }
+
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  input, select { width: 100%; padding: 13px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 15px; font-family: var(--font); outline: none; -webkit-appearance: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--surface2); }
+  .type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .type-btn { padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; }
+  .type-btn.selected { border-color: var(--accent); background: rgba(124,106,247,0.15); color: var(--accent2); }
+  .submit-btn { width: 100%; padding: 15px; border-radius: 12px; background: var(--accent); border: none; color: white; font-size: 16px; font-weight: 800; cursor: pointer; margin-top: 8px; }
+  .submit-btn:active { opacity: 0.85; }
+  .cancel-btn { width: 100%; padding: 13px; border-radius: 12px; background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+
+  /* CALENDAR */
+  .cal-view-toggle { display: flex; gap: 6px; margin-bottom: 14px; }
+  .cal-view-btn { flex: 1; padding: 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .cal-view-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .cal-month { font-size: 17px; font-weight: 800; }
+  .cal-nav { background: var(--surface2); border: none; color: var(--text); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  .cal-day-label { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); padding: 4px 0; }
+  .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 13px; font-weight: 600; position: relative; cursor: pointer; }
+  .cal-day.today { background: var(--accent); color: white; }
+  .cal-day.has-payment { background: rgba(62,207,142,0.2); color: var(--green); }
+  .cal-day.has-payment.today { background: var(--green); color: white; }
+  .cal-day.other-month { color: var(--border); pointer-events: none; }
+  .cal-day.selected { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .cal-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--orange); position: absolute; bottom: 3px; }
+
+  /* WEEK VIEW */
+  .week-day-row { background: var(--surface); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+  .week-day-header { padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .week-day-num { width: 32px; height: 32px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  .week-day-num.today { background: var(--accent); color: white; }
+  .week-day-name { font-size: 13px; font-weight: 700; color: var(--muted); }
+  .week-day-empty { padding: 10px 14px; font-size: 12px; color: var(--border); }
+
+  /* DAY VIEW */
+  .day-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .day-title { font-size: 17px; font-weight: 800; }
+  .day-empty { text-align: center; padding: 30px; color: var(--muted); font-size: 14px; }
+
+  .payment-list-item { background: var(--surface); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 12px; align-items: center; }
+  .pli-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .pli-dot.pending { background: var(--orange); }
+  .pli-info { flex: 1; }
+  .pli-name { font-weight: 700; font-size: 14px; }
+  .pli-date { font-size: 12px; color: var(--muted); }
+  .pli-amount { font-weight: 800; font-size: 15px; color: var(--green); }
+
+  .empty { text-align: center; padding: 60px 20px; }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .empty-sub { font-size: 14px; color: var(--muted); }
+
+  /* TOAST — fixed, always fully visible, fades in/out */
+  .toast {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--green);
+    color: white;
+    padding: 10px 22px;
+    border-radius: 30px;
+    font-weight: 700;
+    font-size: 14px;
+    z-index: 200;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>My <span>Commissions</span></h1>
+  <div class="header-sub">Track every payment. Never miss a cent.</div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
+  <button class="tab" onclick="switchTab('clients')">Clients</button>
+  <button class="tab" onclick="switchTab('calendar')">Calendar</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="content" id="content-dashboard">
+  <div id="stats-container"></div>
+  <div class="section-title">Upcoming Payments</div>
+  <div id="upcoming-container"></div>
+</div>
+
+<!-- CLIENTS -->
+<div class="content" id="content-clients" style="display:none">
+  <div class="client-subtabs">
+    <button class="client-subtab active" id="subtab-active" onclick="switchClientTab('active')">⏳ In Progress</button>
+    <button class="client-subtab" id="subtab-done" onclick="switchClientTab('done')">✅ Completed</button>
+  </div>
+  <div id="clients-container"></div>
+</div>
+
+<!-- CALENDAR -->
+<div class="content" id="content-calendar" style="display:none">
+  <div class="cal-view-toggle">
+    <button class="cal-view-btn active" id="view-month" onclick="setCalView('month')">Month</button>
+    <button class="cal-view-btn" id="view-week" onclick="setCalView('week')">Week</button>
+    <button class="cal-view-btn" id="view-day" onclick="setCalView('day')">Day</button>
+  </div>
+  <div id="cal-inner"></div>
+</div>
+
+<button class="fab" onclick="openAddModal()">+</button>
+
+<!-- ADD CLIENT MODAL -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add Client</div>
+    <div class="form-group">
+      <label>Client Name</label>
+      <input type="text" id="f-name" placeholder="e.g. Sarah Johnson" />
+    </div>
+    <div class="form-group">
+      <label>Payment Type</label>
+      <div class="type-toggle">
+        <button class="type-btn selected" id="btn-monthly" onclick="selectType('monthly')">📅 Monthly</button>
+        <button class="type-btn" id="btn-pif" onclick="selectType('pif')">⚡ PIF (One-time)</button>
+      </div>
+    </div>
+    <div class="form-group" id="months-group">
+      <label>Number of Monthly Payments</label>
+      <select id="f-months">
+        <option value="3">3 months</option>
+        <option value="4">4 months</option>
+        <option value="6" selected>6 months</option>
+        <option value="12">12 months</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Your Commission (per payment, $)</label>
+      <input type="number" id="f-commission" placeholder="e.g. 50" />
+    </div>
+    <div class="form-group">
+      <label>First Payment Date</label>
+      <input type="date" id="f-date" />
+    </div>
+    <button class="submit-btn" onclick="addClient()">Add Client ✓</button>
+    <button class="cancel-btn" onclick="closeModal('add-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- EDIT PAYMENT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Payment</div>
+    <div class="form-group">
+      <label>Commission Amount ($)</label>
+      <input type="number" id="ep-amount" placeholder="e.g. 50" />
+    </div>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="ep-date" />
+    </div>
+    <button class="submit-btn" onclick="saveEditPayment()">Save Changes ✓</button>
+    <button class="cancel-btn" onclick="closeModal('edit-modal')">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let clients = JSON.parse(localStorage.getItem('commission_clients') || '[]');
+let selectedType = 'monthly';
+let calView = 'month'; // month | week | day
+let calYear, calMonth, calWeekStart, calDayDate;
+let selectedCalDay = null;
+let clientFilter = 'active'; // active | done
+let editTarget = null; // { ci, pi }
+
+const today = new Date();
+calYear = today.getFullYear();
+calMonth = today.getMonth();
+calDayDate = new Date(today);
+// start of current week (Sunday)
+calWeekStart = new Date(today);
+calWeekStart.setDate(today.getDate() - today.getDay());
+
+function save() { localStorage.setItem('commission_clients', JSON.stringify(clients)); }
+function fmt(n) { return '$' + parseFloat(n).toFixed(2); }
+function initials(name) { return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
+function fmtDate(d) {
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtDateShort(d) {
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+function toDateStr(d) { return d.toISOString().split('T')[0]; }
+function addMonths(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().split('T')[0];
+}
+function isOverdue(dateStr) {
+  return new Date(dateStr + 'T00:00:00') < new Date(today.toDateString());
+}
+function avatarColor(name) {
+  const colors = ['#7c6af7','#3ecf8e','#f5a623','#f56342','#5bc4f5','#e059a8'];
+  let h = 0; for (let c of name) h = (h * 31 + c.charCodeAt(0)) % colors.length;
+  return colors[h];
+}
+function isClientDone(c) {
+  return c.payments.length > 0 && c.payments.every(p => p.receivedByMe);
+}
+
+// ─── TABS ─────────────────────────────────────────────────
+function switchTab(tab) {
+  ['dashboard','clients','calendar'].forEach(t => {
+    document.getElementById('content-' + t).style.display = t === tab ? 'block' : 'none';
+    document.querySelectorAll('.tab')[['dashboard','clients','calendar'].indexOf(t)].classList.toggle('active', t === tab);
+  });
+  if (tab === 'dashboard') renderDashboard();
+  if (tab === 'clients') renderClients();
+  if (tab === 'calendar') renderCalendar();
+}
+
+function switchClientTab(filter) {
+  clientFilter = filter;
+  document.getElementById('subtab-active').classList.toggle('active', filter === 'active');
+  document.getElementById('subtab-done').classList.toggle('active', filter === 'done');
+  renderClients();
+}
+
+// ─── MODAL ───────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-commission').value = '';
+  document.getElementById('f-date').value = toDateStr(today);
+  selectType('monthly');
+  document.getElementById('add-modal').classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.getElementById('add-modal').addEventListener('click', function(e) { if (e.target === this) closeModal('add-modal'); });
+document.getElementById('edit-modal').addEventListener('click', function(e) { if (e.target === this) closeModal('edit-modal'); });
+
+function selectType(t) {
+  selectedType = t;
+  document.getElementById('btn-monthly').classList.toggle('selected', t === 'monthly');
+  document.getElementById('btn-pif').classList.toggle('selected', t === 'pif');
+  document.getElementById('months-group').style.display = t === 'monthly' ? 'block' : 'none';
+}
+
+// ─── ADD CLIENT ───────────────────────────────────────────
+function addClient() {
+  const name = document.getElementById('f-name').value.trim();
+  const commission = parseFloat(document.getElementById('f-commission').value);
+  const startDate = document.getElementById('f-date').value;
+  if (!name || !commission || !startDate) { showToast('Fill in all fields!'); return; }
+
+  const numPayments = selectedType === 'pif' ? 1 : parseInt(document.getElementById('f-months').value);
+  const payments = [];
+  for (let i = 0; i < numPayments; i++) {
+    payments.push({ id: Date.now() + i, date: addMonths(startDate, i), amount: commission, sentToCoach: false, receivedByMe: false });
+  }
+  clients.push({ id: Date.now(), name, type: selectedType, payments });
+  save();
+  closeModal('add-modal');
+  showToast('Client added! 🎉');
+  renderDashboard();
+  scheduleReminders();
+}
+
+// ─── EDIT PAYMENT ─────────────────────────────────────────
+function openEditPayment(ci, pi) {
+  editTarget = { ci, pi };
+  const p = clients[ci].payments[pi];
+  document.getElementById('ep-amount').value = p.amount;
+  document.getElementById('ep-date').value = p.date;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function saveEditPayment() {
+  const amount = parseFloat(document.getElementById('ep-amount').value);
+  const date = document.getElementById('ep-date').value;
+  if (!amount || !date) { showToast('Fill in all fields!'); return; }
+  clients[editTarget.ci].payments[editTarget.pi].amount = amount;
+  clients[editTarget.ci].payments[editTarget.pi].date = date;
+  save();
+  closeModal('edit-modal');
+  showToast('Payment updated ✓');
+  renderClients();
+  renderDashboard();
+}
+
+// ─── DELETE PAYMENT ───────────────────────────────────────
+function deletePayment(ci, pi) {
+  if (!confirm('Delete this payment?')) return;
+  clients[ci].payments.splice(pi, 1);
+  // if no payments left, remove client too
+  if (clients[ci].payments.length === 0) clients.splice(ci, 1);
+  save();
+  renderClients();
+  renderDashboard();
+  showToast('Payment deleted');
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────
+function renderDashboard() {
+  let totalEarned = 0, totalReceived = 0, totalPending = 0;
+  const upcoming = [];
+  clients.forEach(c => {
+    c.payments.forEach(p => {
+      totalEarned += p.amount;
+      if (p.receivedByMe) totalReceived += p.amount;
+      else { totalPending += p.amount; upcoming.push({ clientName: c.name, payment: p }); }
+    });
+  });
+  upcoming.sort((a, b) => a.payment.date.localeCompare(b.payment.date));
+  document.getElementById('stats-container').innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-label">Total Earned</div><div class="stat-value purple">${fmt(totalEarned)}</div></div>
+      <div class="stat-card"><div class="stat-label">Received</div><div class="stat-value green">${fmt(totalReceived)}</div></div>
+      <div class="stat-card full"><div class="stat-label">Still Pending</div><div class="stat-value orange">${fmt(totalPending)}</div></div>
+    </div>`;
+  const upEl = document.getElementById('upcoming-container');
+  if (upcoming.length === 0) {
+    upEl.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div><div class="empty-title">All caught up!</div><div class="empty-sub">No pending payments.</div></div>`;
+    return;
+  }
+  upEl.innerHTML = upcoming.slice(0, 10).map(u => `
+    <div class="payment-list-item">
+      <div class="pli-dot pending"></div>
+      <div class="pli-info">
+        <div class="pli-name">${u.clientName}</div>
+        <div class="pli-date">${fmtDate(u.payment.date)}${isOverdue(u.payment.date) ? ' ⚠️ Overdue' : ''}</div>
+        <div class="payment-badges" style="margin-top:4px;">
+          <span class="badge ${u.payment.sentToCoach ? 'sent' : 'not-sent'}">${u.payment.sentToCoach ? '✓ Coach received' : '⏳ Waiting coach'}</span>
+          <span class="badge ${u.payment.receivedByMe ? 'received' : 'not-received'}">${u.payment.receivedByMe ? '✓ I got paid' : '⏳ Not received'}</span>
+        </div>
+      </div>
+      <div class="pli-amount">${fmt(u.payment.amount)}</div>
+    </div>`).join('');
+}
+
+// ─── CLIENTS ─────────────────────────────────────────────
+function renderClients() {
+  const el = document.getElementById('clients-container');
+  const filtered = clients.filter(c => clientFilter === 'done' ? isClientDone(c) : !isClientDone(c));
+  if (clients.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">No clients yet</div><div class="empty-sub">Tap + to add your first client</div></div>`;
+    return;
+  }
+  if (filtered.length === 0) {
+    const msg = clientFilter === 'done' ? 'No completed clients yet' : 'All clients are done!';
+    el.innerHTML = `<div class="empty"><div class="empty-icon">${clientFilter === 'done' ? '✅' : '🎯'}</div><div class="empty-title">${msg}</div></div>`;
+    return;
+  }
+  // map filtered back to real indices
+  el.innerHTML = filtered.map(c => {
+    const ci = clients.indexOf(c);
+    const totalEarned = c.payments.reduce((s, p) => s + p.amount, 0);
+    const received = c.payments.filter(p => p.receivedByMe).reduce((s, p) => s + p.amount, 0);
+    const pending = totalEarned - received;
+    const color = avatarColor(c.name);
+    return `
+    <div class="client-card">
+      <div class="client-header" onclick="toggleClient(${ci})">
+        <div class="client-avatar" style="background:${color}">${initials(c.name)}</div>
+        <div class="client-info">
+          <div class="client-name">${c.name}</div>
+          <div class="client-type"><span class="badge ${c.type === 'pif' ? 'pif' : 'monthly'}">${c.type === 'pif' ? '⚡ PIF' : '📅 Monthly'}</span> · ${c.payments.length} payment${c.payments.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="client-amount">
+          <div class="amount">${fmt(received)}</div>
+          ${pending > 0 ? `<div class="pending">${fmt(pending)} due</div>` : '<div style="font-size:11px;color:var(--green)">✓ Done</div>'}
+        </div>
+        <div class="chevron" id="chevron-${ci}">›</div>
+      </div>
+      <div class="client-detail" id="detail-${ci}">
+        ${c.payments.map((p, pi) => `
+          <div class="payment-row">
+            <div class="payment-num">${pi + 1}</div>
+            <div class="payment-info">
+              <div class="payment-date">${fmtDate(p.date)}</div>
+              <div class="payment-amount">${fmt(p.amount)}</div>
+              <div class="payment-badges">
+                <span class="badge ${p.sentToCoach ? 'sent' : 'not-sent'}">${p.sentToCoach ? '✓ Coach received' : '⏳ Coach pending'}</span>
+                <span class="badge ${p.receivedByMe ? 'received' : 'not-received'}">${p.receivedByMe ? '✓ I got it' : "⏳ Waiting"}</span>
+              </div>
+            </div>
+            <div class="payment-actions">
+              <button class="toggle-btn" onclick="togglePayment(${ci},${pi},'sent')">${p.sentToCoach ? 'Undo sent' : 'Mark sent'}</button>
+              <button class="toggle-btn" onclick="togglePayment(${ci},${pi},'received')" ${!p.sentToCoach ? 'disabled style="opacity:0.4"' : ''}>${p.receivedByMe ? 'Undo' : 'Got it!'}</button>
+              <div style="display:flex;gap:5px;margin-top:2px;">
+                <button class="icon-btn edit" onclick="openEditPayment(${ci},${pi})" title="Edit">✏️</button>
+                <button class="icon-btn del" onclick="deletePayment(${ci},${pi})" title="Delete">🗑</button>
+              </div>
+            </div>
+          </div>`).join('')}
+        <button class="delete-client-btn" onclick="deleteClient(${ci})">🗑 Remove Client</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleClient(ci) {
+  const detail = document.getElementById('detail-' + ci);
+  const chevron = document.getElementById('chevron-' + ci);
+  if (!detail) return;
+  const isOpen = detail.classList.toggle('open');
+  chevron.classList.toggle('open', isOpen);
+}
+
+function togglePayment(ci, pi, field) {
+  if (field === 'sent') {
+    clients[ci].payments[pi].sentToCoach = !clients[ci].payments[pi].sentToCoach;
+    if (!clients[ci].payments[pi].sentToCoach) clients[ci].payments[pi].receivedByMe = false;
+  } else {
+    clients[ci].payments[pi].receivedByMe = !clients[ci].payments[pi].receivedByMe;
+  }
+  save();
+  renderClients();
+  renderDashboard();
+  showToast('Updated ✓');
+}
+
+function deleteClient(ci) {
+  if (!confirm(`Remove ${clients[ci].name}?`)) return;
+  clients.splice(ci, 1);
+  save();
+  renderClients();
+  renderDashboard();
+  showToast('Client removed');
+}
+
+// ─── CALENDAR ────────────────────────────────────────────
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function setCalView(v) {
+  calView = v;
+  ['month','week','day'].forEach(x => document.getElementById('view-' + x).classList.toggle('active', x === v));
+  selectedCalDay = null;
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const el = document.getElementById('cal-inner');
+  if (calView === 'month') el.innerHTML = buildMonthView();
+  else if (calView === 'week') el.innerHTML = buildWeekView();
+  else el.innerHTML = buildDayView();
+}
+
+// Collect all payments into a date-keyed map
+function getPaymentMap() {
+  const map = {};
+  clients.forEach(c => {
+    c.payments.forEach(p => {
+      if (!map[p.date]) map[p.date] = [];
+      map[p.date].push({ clientName: c.name, payment: p });
+    });
+  });
+  return map;
+}
+
+function paymentListHTML(entries) {
+  if (!entries || entries.length === 0) return '';
+  return entries.map(e => `
+    <div class="payment-list-item">
+      <div class="pli-dot ${e.payment.receivedByMe ? '' : 'pending'}"></div>
+      <div class="pli-info">
+        <div class="pli-name">${e.clientName}</div>
+        <div class="payment-badges" style="margin-top:3px;">
+          <span class="badge ${e.payment.sentToCoach ? 'sent' : 'not-sent'}">${e.payment.sentToCoach ? '✓ Sent' : '⏳ Pending'}</span>
+          <span class="badge ${e.payment.receivedByMe ? 'received' : 'not-received'}">${e.payment.receivedByMe ? '✓ Received' : '⏳ Waiting'}</span>
+        </div>
+      </div>
+      <div class="pli-amount">${fmt(e.payment.amount)}</div>
+    </div>`).join('');
+}
+
+// MONTH VIEW
+function buildMonthView() {
+  const map = getPaymentMap();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const prevDays = new Date(calYear, calMonth, 0).getDate();
+
+  let cells = DAYS.map(d => `<div class="cal-day-label">${d}</div>`).join('');
+  for (let i = firstDay - 1; i >= 0; i--) cells += `<div class="cal-day other-month">${prevDays - i}</div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = today.getFullYear()===calYear && today.getMonth()===calMonth && today.getDate()===d;
+    const hasP = map[dateStr];
+    let cls = 'cal-day';
+    if (isToday) cls += ' today';
+    if (hasP) cls += ' has-payment';
+    if (selectedCalDay === dateStr) cls += ' selected';
+    cells += `<div class="${cls}" onclick="selectCalDay('${dateStr}')">${d}${hasP?'<div class="cal-dot"></div>':''}</div>`;
+  }
+  const rem = 42 - firstDay - daysInMonth;
+  for (let d = 1; d <= rem; d++) cells += `<div class="cal-day other-month">${d}</div>`;
+
+  const listEntries = selectedCalDay
+    ? (map[selectedCalDay] || [])
+    : Object.entries(map).filter(([k]) => k.startsWith(`${calYear}-${String(calMonth+1).padStart(2,'0')}`)).flatMap(([,v]) => v);
+  listEntries.sort ? listEntries.sort((a,b) => (a.payment?.date||'').localeCompare(b.payment?.date||'')) : null;
+
+  return `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="prevCal()">‹</button>
+      <div class="cal-month">${MONTHS[calMonth]} ${calYear}</div>
+      <button class="cal-nav" onclick="nextCal()">›</button>
+    </div>
+    <div class="calendar-grid" style="margin-bottom:4px;">${cells}</div>
+    <div class="section-title" style="margin-top:16px;">${selectedCalDay ? 'Payments on ' + fmtDate(selectedCalDay) : 'All payments this month'}</div>
+    ${listEntries.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--muted);font-size:14px;">No payments</div>' : paymentListHTML(listEntries)}`;
+}
+
+function selectCalDay(dateStr) {
+  selectedCalDay = selectedCalDay === dateStr ? null : dateStr;
+  renderCalendar();
+}
+
+// WEEK VIEW
+function buildWeekView() {
+  const map = getPaymentMap();
+  const ws = new Date(calWeekStart);
+  const we = new Date(ws); we.setDate(ws.getDate() + 6);
+  const label = ws.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' – ' + we.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+  let rows = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(ws); d.setDate(ws.getDate() + i);
+    const dateStr = toDateStr(d);
+    const isToday = toDateStr(d) === toDateStr(today);
+    const entries = map[dateStr] || [];
+    rows += `
+      <div class="week-day-row">
+        <div class="week-day-header">
+          <div class="week-day-num ${isToday ? 'today' : ''}">${d.getDate()}</div>
+          <div class="week-day-name">${DAYS[d.getDay()]}${isToday ? ' · Today' : ''}</div>
+        </div>
+        ${entries.length > 0 ? paymentListHTML(entries) : `<div class="week-day-empty">No payments</div>`}
+      </div>`;
+  }
+  return `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="prevCal()">‹</button>
+      <div class="cal-month" style="font-size:14px;">${label}</div>
+      <button class="cal-nav" onclick="nextCal()">›</button>
+    </div>
+    ${rows}`;
+}
+
+// DAY VIEW
+function buildDayView() {
+  const map = getPaymentMap();
+  const dateStr = toDateStr(calDayDate);
+  const entries = map[dateStr] || [];
+  const isToday = dateStr === toDateStr(today);
+  return `
+    <div class="day-nav">
+      <button class="cal-nav" onclick="prevCal()">‹</button>
+      <div class="day-title">${fmtDateShort(calDayDate)}${isToday ? ' · Today' : ''}</div>
+      <button class="cal-nav" onclick="nextCal()">›</button>
+    </div>
+    ${entries.length > 0 ? paymentListHTML(entries) : '<div class="day-empty">No payments on this day</div>'}`;
+}
+
+function prevCal() {
+  if (calView === 'month') { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } selectedCalDay = null; }
+  else if (calView === 'week') { calWeekStart.setDate(calWeekStart.getDate() - 7); }
+  else { calDayDate.setDate(calDayDate.getDate() - 1); }
+  renderCalendar();
+}
+function nextCal() {
+  if (calView === 'month') { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } selectedCalDay = null; }
+  else if (calView === 'week') { calWeekStart.setDate(calWeekStart.getDate() + 7); }
+  else { calDayDate.setDate(calDayDate.getDate() + 1); }
+  renderCalendar();
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (toastTimer) clearTimeout(toastTimer);
+  t.textContent = msg;
+  t.classList.add('show');
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2200);
+}
+
+// ─── REMINDERS ────────────────────────────────────────────
+function scheduleReminders() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') Notification.requestPermission();
+}
+function checkTodayReminders() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const todayStr = toDateStr(today);
+  clients.forEach(c => {
+    c.payments.forEach(p => {
+      if (p.date === todayStr && !p.receivedByMe) {
+        new Notification('💰 Payment Due Today', { body: `${c.name} — ${fmt(p.amount)} commission due` });
+      }
+    });
+  });
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+renderDashboard();
+scheduleReminders();
+setTimeout(checkTodayReminders, 1500);
+</script>
+</body>
+</html>
