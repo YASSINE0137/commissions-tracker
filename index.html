@@ -351,6 +351,59 @@ let editTarget = null;
 let addPayTarget = null;
 let payRowCount = 0;
 
+// ─── FX RATES ─────────────────────────────────────────────
+// Cached rates: how much 1 unit of key = in USD
+let fxRates = JSON.parse(localStorage.getItem('fx_rates') || 'null');
+let fxLastFetch = parseInt(localStorage.getItem('fx_last_fetch') || '0');
+
+async function ensureFxRates() {
+  const now = Date.now();
+  // refresh if no rates or older than 4 hours
+  if (fxRates && (now - fxLastFetch) < 4 * 60 * 60 * 1000) return;
+  try {
+    const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    const data = await res.json();
+    // data.rates gives us: 1 USD = X currency
+    // we want: 1 currency = Y USD, so invert
+    fxRates = {};
+    for (const [cur, rate] of Object.entries(data.rates)) {
+      fxRates[cur] = 1 / rate; // value in USD
+    }
+    fxRates['$'] = 1;
+    localStorage.setItem('fx_rates', JSON.stringify(fxRates));
+    localStorage.setItem('fx_last_fetch', String(now));
+    fxLastFetch = now;
+  } catch(e) {
+    // fallback hardcoded rates if offline
+    if (!fxRates) fxRates = { '$':1, '£':1.27, '€':1.08, 'CAD$':0.74, 'AUD$':0.65 };
+  }
+}
+
+// Convert an amount from one currency to another
+// Returns null if rates not available
+function convertCurrency(amount, fromCur, toCur) {
+  if (fromCur === toCur) return amount;
+  if (!fxRates) return null;
+  // map our symbols to ISO codes
+  const iso = { '$':'USD', '£':'GBP', '€':'EUR', 'CAD$':'CAD', 'AUD$':'AUD' };
+  const from = iso[fromCur] || fromCur;
+  const to = iso[toCur] || toCur;
+  const fromUSD = fxRates[from] || 1;
+  const toUSD = fxRates[to] || 1;
+  // from -> USD -> to
+  return amount * fromUSD / toUSD;
+}
+
+// Get bonus amount in the payment's main currency
+function bonusInMainCurrency(p) {
+  if (!p.bonus || p.bonus <= 0) return 0;
+  const bonusCur = p.bonusCurrency || '£';
+  const mainCur = p.currency || '$';
+  if (bonusCur === mainCur) return p.bonus;
+  const converted = convertCurrency(p.bonus, bonusCur, mainCur);
+  return converted !== null ? converted : p.bonus; // fallback to raw if no rates
+}
+
 const today = new Date();
 calYear = today.getFullYear();
 calMonth = today.getMonth();
@@ -372,8 +425,18 @@ function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 function fmtAmt(p) {
-  let s = (p.currency || '$') + parseFloat(p.amount).toFixed(2);
-  if (p.bonus && p.bonus > 0) s += '<span style="font-size:10px;color:var(--orange);font-weight:600;margin-left:4px;opacity:0.85;">+' + (p.bonusCurrency||'£') + parseFloat(p.bonus).toFixed(2) + '</span>';
+  const mainCur = p.currency || '$';
+  let s = mainCur + parseFloat(p.amount).toFixed(2);
+  if (p.bonus && p.bonus > 0) {
+    const bonusCur = p.bonusCurrency || '£';
+    const bonusConverted = bonusInMainCurrency(p);
+    const sameC = bonusCur === mainCur;
+    // show original if different currency, converted in parens
+    const bonusLabel = sameC
+      ? mainCur + p.bonus.toFixed(2)
+      : bonusCur + p.bonus.toFixed(2) + '≈' + mainCur + bonusConverted.toFixed(2);
+    s += '<span style="font-size:10px;color:var(--orange);font-weight:600;margin-left:5px;opacity:0.9;">+' + bonusLabel + ' bonus</span>';
+  }
   return s;
 }
 function totalAmt(p) {
@@ -601,7 +664,7 @@ function renderDashboard() {
     c.payments.forEach(p => {
       const cur = p.currency || '$';
       if (!totals[cur]) totals[cur] = { earned:0, received:0, pending:0 };
-      const bonus = (p.bonus && p.bonus > 0) ? p.bonus : 0;
+      const bonus = (p.bonus && p.bonus > 0) ? bonusInMainCurrency(p) : 0;
       totals[cur].earned += p.amount + bonus;
       if (p.receivedByMe) {
         totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
@@ -686,15 +749,15 @@ function renderClients() {
     const mainCur = c.payments[0]?.currency || '$';
     const received = c.payments.reduce((s,p) => {
       if (!p.receivedByMe) return s;
-      return s + p.amount + (p.bonus && p.bonusReceived ? p.bonus : 0);
+      return s + p.amount + (p.bonus && p.bonusReceived ? bonusInMainCurrency(p) : 0);
     }, 0);
     const bonusPendingAmt = c.payments.reduce((s,p) => {
       if (!p.bonus || p.bonus <= 0) return s;
-      if (!p.bonusReceived) return s + p.bonus;
+      if (!p.bonusReceived) return s + bonusInMainCurrency(p);
       return s;
     }, 0);
     const pending = c.payments.reduce((s,p) => {
-      const bp = (p.bonus && !p.bonusReceived ? p.bonus : 0);
+      const bp = (p.bonus && !p.bonusReceived ? bonusInMainCurrency(p) : 0);
       return s + (!p.receivedByMe ? p.amount + bp : bp);
     }, 0);
     const color = avatarColor(c.name);
@@ -810,7 +873,7 @@ function totalBarHTML(entries, label) {
     const p = e.payment;
     const cur = p.currency || '$';
     if (!totals[cur]) totals[cur] = { total:0, received:0, pending:0 };
-    const bonus = (p.bonus && p.bonus > 0) ? p.bonus : 0;
+    const bonus = (p.bonus && p.bonus > 0) ? bonusInMainCurrency(p) : 0;
     totals[cur].total += p.amount + bonus;
     if (p.receivedByMe) {
       totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
@@ -982,6 +1045,10 @@ function importData(event) {
 }
 
 // ─── INIT ─────────────────────────────────────────────────
+ensureFxRates().then(() => {
+  renderDashboard();
+  renderClients();
+});
 renderDashboard();
 scheduleReminders();
 setTimeout(checkTodayReminders,1500);
