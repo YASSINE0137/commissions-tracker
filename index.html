@@ -269,6 +269,19 @@
       <label>Payment Date</label>
       <input type="date" id="ep-date" />
     </div>
+    <div class="form-group">
+      <label>Bonus <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;">(optional — e.g. £7 or £18)</span></label>
+      <div style="display:flex;gap:8px;">
+        <select id="ep-bonus-currency" style="width:110px;flex-shrink:0;">
+          <option value="$">$ USD</option>
+          <option value="£">£ GBP</option>
+          <option value="€">€ EUR</option>
+          <option value="CAD$">CAD$</option>
+          <option value="AUD$">AUD$</option>
+        </select>
+        <input type="number" id="ep-bonus" placeholder="0 = no bonus" style="flex:1;" />
+      </div>
+    </div>
     <button class="submit-btn" onclick="saveEditPayment()">Save Changes ✓</button>
     <button class="cancel-btn" onclick="closeModal('edit-modal')">Cancel</button>
   </div>
@@ -302,6 +315,19 @@
     <div class="form-group">
       <label>Date</label>
       <input type="date" id="ap-date" />
+    </div>
+    <div class="form-group">
+      <label>Bonus <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <div style="display:flex;gap:8px;">
+        <select id="ap-bonus-currency" style="width:110px;flex-shrink:0;">
+          <option value="$">$ USD</option>
+          <option value="£">£ GBP</option>
+          <option value="€">€ EUR</option>
+          <option value="CAD$">CAD$</option>
+          <option value="AUD$">AUD$</option>
+        </select>
+        <input type="number" id="ap-bonus" placeholder="0 = no bonus" style="flex:1;" />
+      </div>
     </div>
     <button class="submit-btn" onclick="saveAddPayment()">Add Payment ✓</button>
     <button class="cancel-btn" onclick="closeModal('addpay-modal')">Cancel</button>
@@ -345,7 +371,15 @@ function fmtDate(d) {
 function fmtDateShort(d) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
-function fmtAmt(p) { return (p.currency || '$') + parseFloat(p.amount).toFixed(2); }
+function fmtAmt(p) {
+  let s = (p.currency || '$') + parseFloat(p.amount).toFixed(2);
+  if (p.bonus && p.bonus > 0) s += ' <span style="color:var(--orange);font-size:11px;font-weight:700;">+' + (p.bonusCurrency||'£') + parseFloat(p.bonus).toFixed(2) + ' bonus</span>';
+  return s;
+}
+function totalAmt(p) {
+  // commission + bonus if bonus received
+  return p.amount + (p.bonus && p.bonusReceived ? p.bonus : 0);
+}
 function initials(name) { return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2); }
 function avatarColor(name) {
   const c = ['#7c6af7','#3ecf8e','#f5a623','#f56342','#5bc4f5','#e059a8'];
@@ -383,7 +417,7 @@ function currencyOptions(selected) {
   return CURRENCIES.map(c => `<option value="${c}" ${c===selected?'selected':''}>${CURRENCY_LABELS[c]}</option>`).join('');
 }
 
-function addPaymentRow(label='', currency='$', amount='', date='', isDeposit=false) {
+function addPaymentRow(label='', currency='$', amount='', date='', bonus='', bonusCurrency='£') {
   const id = ++payRowCount;
   const todayStr = toDateStr(today);
   const div = document.createElement('div');
@@ -410,6 +444,13 @@ function addPaymentRow(label='', currency='$', amount='', date='', isDeposit=fal
       <div class="form-group" style="margin-bottom:0;">
         <label>Date</label>
         <input type="date" id="prow-date-${id}" value="${date || todayStr}" />
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:8px;margin-bottom:0;">
+      <label style="font-size:10px;">Bonus <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <div style="display:flex;gap:8px;">
+        <select id="prow-bonus-currency-${id}" style="width:100px;flex-shrink:0;">${currencyOptions(currency)}</select>
+        <input type="number" id="prow-bonus-${id}" value="" placeholder="0 = no bonus" style="flex:1;" />
       </div>
     </div>`;
   document.getElementById('pay-builder').appendChild(div);
@@ -451,7 +492,10 @@ function addClient() {
     const amount = parseFloat(document.getElementById('prow-amount-'+id).value);
     const date = document.getElementById('prow-date-'+id).value;
     if (!amount || !date) { showToast('Fill in all payment fields!'); return; }
-    payments.push({ id: Date.now()+payments.length, label, currency, amount, date, sentToCoach: false, receivedByMe: false });
+    const bonusRaw = parseFloat(document.getElementById('prow-bonus-'+id).value);
+    const bonus = isNaN(bonusRaw) || bonusRaw <= 0 ? 0 : bonusRaw;
+    const bonusCurrency = document.getElementById('prow-bonus-currency-'+id).value;
+    payments.push({ id: Date.now()+payments.length, label, currency, amount, date, bonus, bonusCurrency, sentToCoach: false, receivedByMe: false, bonusReceived: false });
   }
 
   clients.push({ id: Date.now(), name, payments });
@@ -469,6 +513,8 @@ function openEditPayment(ci, pi) {
   document.getElementById('ep-currency').value = p.currency || '$';
   document.getElementById('ep-amount').value = p.amount;
   document.getElementById('ep-date').value = p.date;
+  document.getElementById('ep-bonus').value = p.bonus || '';
+  document.getElementById('ep-bonus-currency').value = p.bonusCurrency || '£';
   document.getElementById('edit-modal').classList.add('open');
 }
 function saveEditPayment() {
@@ -478,7 +524,11 @@ function saveEditPayment() {
   const date = document.getElementById('ep-date').value;
   if (!amount || !date) { showToast('Fill in all fields!'); return; }
   const p = clients[editTarget.ci].payments[editTarget.pi];
+  const bonusRaw = parseFloat(document.getElementById('ep-bonus').value);
+  const bonus = isNaN(bonusRaw) || bonusRaw <= 0 ? 0 : bonusRaw;
+  const bonusCurrency = document.getElementById('ep-bonus-currency').value;
   p.label = label; p.currency = currency; p.amount = amount; p.date = date;
+  p.bonus = bonus; p.bonusCurrency = bonusCurrency;
   save(); closeModal('edit-modal');
   showToast('Payment updated ✓');
   renderClients(); renderDashboard();
@@ -491,6 +541,8 @@ function openAddPayment(ci) {
   document.getElementById('ap-currency').value = '$';
   document.getElementById('ap-amount').value = '';
   document.getElementById('ap-date').value = toDateStr(today);
+  document.getElementById('ap-bonus').value = '';
+  document.getElementById('ap-bonus-currency').value = '£';
   document.getElementById('addpay-modal').classList.add('open');
 }
 function saveAddPayment() {
@@ -499,7 +551,10 @@ function saveAddPayment() {
   const amount = parseFloat(document.getElementById('ap-amount').value);
   const date = document.getElementById('ap-date').value;
   if (!amount || !date) { showToast('Fill in all fields!'); return; }
-  clients[addPayTarget].payments.push({ id: Date.now(), label, currency, amount, date, sentToCoach: false, receivedByMe: false });
+  const bonusRaw2 = parseFloat(document.getElementById('ap-bonus').value);
+  const bonus = isNaN(bonusRaw2) || bonusRaw2 <= 0 ? 0 : bonusRaw2;
+  const bonusCurrency = document.getElementById('ap-bonus-currency').value;
+  clients[addPayTarget].payments.push({ id: Date.now(), label, currency, amount, date, bonus, bonusCurrency, sentToCoach: false, receivedByMe: false, bonusReceived: false });
   save(); closeModal('addpay-modal');
   showToast('Payment added ✓');
   renderClients(); renderDashboard();
@@ -523,11 +578,15 @@ function deleteClient(ci) {
 
 // ─── TOGGLE ───────────────────────────────────────────────
 function togglePayment(ci, pi, field) {
+  const p = clients[ci].payments[pi];
   if (field === 'sent') {
-    clients[ci].payments[pi].sentToCoach = !clients[ci].payments[pi].sentToCoach;
-    if (!clients[ci].payments[pi].sentToCoach) clients[ci].payments[pi].receivedByMe = false;
-  } else {
-    clients[ci].payments[pi].receivedByMe = !clients[ci].payments[pi].receivedByMe;
+    p.sentToCoach = !p.sentToCoach;
+    if (!p.sentToCoach) { p.receivedByMe = false; p.bonusReceived = false; }
+  } else if (field === 'received') {
+    p.receivedByMe = !p.receivedByMe;
+    if (!p.receivedByMe) p.bonusReceived = false;
+  } else if (field === 'bonus') {
+    p.bonusReceived = !p.bonusReceived;
   }
   save(); renderClients(); renderDashboard();
   showToast('Updated ✓');
@@ -542,9 +601,15 @@ function renderDashboard() {
     c.payments.forEach(p => {
       const cur = p.currency || '$';
       if (!totals[cur]) totals[cur] = { earned:0, received:0, pending:0 };
-      totals[cur].earned += p.amount;
-      if (p.receivedByMe) totals[cur].received += p.amount;
-      else { totals[cur].pending += p.amount; upcoming.push({ clientName: c.name, payment: p }); }
+      const bonus = (p.bonus && p.bonus > 0) ? p.bonus : 0;
+      totals[cur].earned += p.amount + bonus;
+      if (p.receivedByMe) {
+        totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
+        if (bonus > 0 && !p.bonusReceived) totals[cur].pending += bonus;
+      } else {
+        totals[cur].pending += p.amount + bonus;
+        upcoming.push({ clientName: c.name, payment: p });
+      }
     });
   });
   upcoming.sort((a,b) => a.payment.date.localeCompare(b.payment.date));
@@ -648,11 +713,13 @@ function renderClients() {
               <div class="payment-badges">
                 <span class="badge ${p.sentToCoach?'sent':'not-sent'}">${p.sentToCoach?'✓ Coach':'⏳ Coach'}</span>
                 <span class="badge ${p.receivedByMe?'received':'not-received'}">${p.receivedByMe?'✓ Got it':'⏳ Waiting'}</span>
+                ${p.bonus && p.bonus > 0 ? `<span class="badge ${p.bonusReceived?'received':'not-received'}">${p.bonusReceived?'✓ Bonus got':'⏳ Bonus pending'}</span>` : ''}
               </div>
             </div>
             <div class="pay-actions">
               <button class="toggle-btn" onclick="togglePayment(${ci},${pi},'sent')">${p.sentToCoach?'Undo sent':'Mark sent'}</button>
               <button class="toggle-btn" onclick="togglePayment(${ci},${pi},'received')" ${!p.sentToCoach?'disabled':''}>${p.receivedByMe?'Undo':'Got it!'}</button>
+              ${p.bonus && p.bonus > 0 ? `<button class="toggle-btn" style="background:rgba(245,163,35,0.12);border-color:rgba(245,163,35,0.3);color:var(--orange);" onclick="togglePayment(${ci},${pi},'bonus')" ${!p.receivedByMe?'disabled':''}>${p.bonusReceived?'Undo bonus':'Got bonus!'}</button>` : ''}
               <div class="icon-row">
                 <button class="icon-btn edit" onclick="openEditPayment(${ci},${pi})">✏️</button>
                 <button class="icon-btn del" onclick="deletePayment(${ci},${pi})">🗑</button>
@@ -720,11 +787,17 @@ function totalBarHTML(entries, label) {
   // group by currency
   const totals = {}; // cur -> { total, received, pending }
   entries.forEach(e => {
-    const cur = e.payment.currency || '$';
+    const p = e.payment;
+    const cur = p.currency || '$';
     if (!totals[cur]) totals[cur] = { total:0, received:0, pending:0 };
-    totals[cur].total += e.payment.amount;
-    if (e.payment.receivedByMe) totals[cur].received += e.payment.amount;
-    else totals[cur].pending += e.payment.amount;
+    const bonus = (p.bonus && p.bonus > 0) ? p.bonus : 0;
+    totals[cur].total += p.amount + bonus;
+    if (p.receivedByMe) {
+      totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
+      if (bonus > 0 && !p.bonusReceived) totals[cur].pending += bonus;
+    } else {
+      totals[cur].pending += p.amount + bonus;
+    }
   });
   const currencies = Object.keys(totals);
   const blocks = currencies.map(cur => {
