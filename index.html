@@ -373,7 +373,7 @@ function fmtDateShort(d) {
 }
 function fmtAmt(p) {
   let s = (p.currency || '$') + parseFloat(p.amount).toFixed(2);
-  if (p.bonus && p.bonus > 0) s += ' <span style="color:var(--orange);font-size:11px;font-weight:700;">+' + (p.bonusCurrency||'£') + parseFloat(p.bonus).toFixed(2) + ' bonus</span>';
+  if (p.bonus && p.bonus > 0) s += '<span style="font-size:10px;color:var(--orange);font-weight:600;margin-left:4px;opacity:0.85;">+' + (p.bonusCurrency||'£') + parseFloat(p.bonus).toFixed(2) + '</span>';
   return s;
 }
 function totalAmt(p) {
@@ -531,7 +531,7 @@ function saveEditPayment() {
   p.bonus = bonus; p.bonusCurrency = bonusCurrency;
   save(); closeModal('edit-modal');
   showToast('Payment updated ✓');
-  renderClients(); renderDashboard();
+  renderClients(); applyOpenCards(); renderDashboard();
 }
 
 // ─── ADD PAYMENT TO EXISTING CLIENT ──────────────────────
@@ -557,7 +557,7 @@ function saveAddPayment() {
   clients[addPayTarget].payments.push({ id: Date.now(), label, currency, amount, date, bonus, bonusCurrency, sentToCoach: false, receivedByMe: false, bonusReceived: false });
   save(); closeModal('addpay-modal');
   showToast('Payment added ✓');
-  renderClients(); renderDashboard();
+  renderClients(); applyOpenCards(); renderDashboard();
 }
 
 // ─── DELETE PAYMENT ───────────────────────────────────────
@@ -565,7 +565,7 @@ function deletePayment(ci, pi) {
   if (!confirm('Delete this payment?')) return;
   clients[ci].payments.splice(pi, 1);
   if (clients[ci].payments.length === 0) clients.splice(ci, 1);
-  save(); renderClients(); renderDashboard();
+  save(); renderClients(); applyOpenCards(); renderDashboard();
   showToast('Payment deleted');
 }
 
@@ -588,7 +588,7 @@ function togglePayment(ci, pi, field) {
   } else if (field === 'bonus') {
     p.bonusReceived = !p.bonusReceived;
   }
-  save(); renderClients(); renderDashboard();
+  save(); renderClients(); applyOpenCards(); renderDashboard();
   showToast('Updated ✓');
 }
 
@@ -683,10 +683,20 @@ function renderClients() {
   }
   el.innerHTML = filtered.map(c => {
     const ci = clients.indexOf(c);
-    const received = c.payments.filter(p=>p.receivedByMe).reduce((s,p)=>s+p.amount,0);
-    const pending = c.payments.filter(p=>!p.receivedByMe).reduce((s,p)=>s+p.amount,0);
-    // show currency of first payment for header
     const mainCur = c.payments[0]?.currency || '$';
+    const received = c.payments.reduce((s,p) => {
+      if (!p.receivedByMe) return s;
+      return s + p.amount + (p.bonus && p.bonusReceived ? p.bonus : 0);
+    }, 0);
+    const bonusPendingAmt = c.payments.reduce((s,p) => {
+      if (!p.bonus || p.bonus <= 0) return s;
+      if (!p.bonusReceived) return s + p.bonus;
+      return s;
+    }, 0);
+    const pending = c.payments.reduce((s,p) => {
+      const bp = (p.bonus && !p.bonusReceived ? p.bonus : 0);
+      return s + (!p.receivedByMe ? p.amount + bp : bp);
+    }, 0);
     const color = avatarColor(c.name);
     return `
     <div class="client-card">
@@ -698,7 +708,7 @@ function renderClients() {
         </div>
         <div class="client-amount">
           <div class="amount">${mainCur}${received.toFixed(2)}</div>
-          ${pending > 0 ? `<div class="pending">${mainCur}${pending.toFixed(2)} due</div>` : '<div style="font-size:11px;color:var(--green)">✓ Done</div>'}
+          ${pending > 0 ? `<div class="pending">${mainCur}${pending.toFixed(2)} due${bonusPendingAmt>0?' <span style="font-size:10px;opacity:0.75">(incl. bonus)</span>':''}</div>` : '<div style="font-size:11px;color:var(--green)">✓ Done</div>'}
         </div>
         <div class="chevron" id="chevron-${ci}">›</div>
       </div>
@@ -733,12 +743,22 @@ function renderClients() {
   }).join('');
 }
 
+// track which cards are open so re-renders don't collapse them
+const openCards = new Set();
+
 function toggleClient(ci) {
-  const d = document.getElementById('detail-'+ci);
-  const ch = document.getElementById('chevron-'+ci);
-  if (!d) return;
-  const open = d.classList.toggle('open');
-  ch.classList.toggle('open', open);
+  if (openCards.has(ci)) openCards.delete(ci);
+  else openCards.add(ci);
+  applyOpenCards();
+}
+
+function applyOpenCards() {
+  openCards.forEach(ci => {
+    const d = document.getElementById('detail-'+ci);
+    const ch = document.getElementById('chevron-'+ci);
+    if (d) { d.classList.add('open'); }
+    if (ch) { ch.classList.add('open'); }
+  });
 }
 
 // ─── CALENDAR ────────────────────────────────────────────
@@ -804,7 +824,7 @@ function totalBarHTML(entries, label) {
     const t = totals[cur];
     return `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
       ${currencies.length > 1 ? `<span style="font-size:11px;font-weight:700;color:var(--muted);min-width:28px;">${cur}</span>` : ''}
-      <div><div style="font-size:10px;color:var(--muted);font-weight:600;">TOTAL</div><div style="font-size:16px;font-weight:800;color:var(--accent2);">${cur}${t.total.toFixed(2)}</div></div>
+      <div><div style="font-size:10px;color:var(--muted);font-weight:600;">TOTAL <span style="font-weight:400;opacity:0.6;">incl. bonus</span></div><div style="font-size:16px;font-weight:800;color:var(--accent2);">${cur}${t.total.toFixed(2)}</div></div>
       <div><div style="font-size:10px;color:var(--muted);font-weight:600;">RECEIVED</div><div style="font-size:16px;font-weight:800;color:var(--green);">${cur}${t.received.toFixed(2)}</div></div>
       <div><div style="font-size:10px;color:var(--muted);font-weight:600;">PENDING</div><div style="font-size:16px;font-weight:800;color:var(--orange);">${cur}${t.pending.toFixed(2)}</div></div>
     </div>`;
