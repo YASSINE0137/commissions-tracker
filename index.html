@@ -577,10 +577,11 @@ function addClient() {
     payments.push({ id: Date.now()+payments.length, label, currency, amount, date, bonus, bonusCurrency, sentToCoach: false, receivedByMe: false, bonusReceived: false });
   }
 
-  clients.push({ id: Date.now(), name, payments });
+  clients.push({ id: Date.now(), name, payments, note: '' });
   save();
   closeModal('add-modal');
   showToast('Client added! 🎉');
+  switchTab('clients');
   renderDashboard();
 }
 
@@ -876,10 +877,50 @@ function renderClients() {
             </div>
           </div>`).join('')}
         <button class="add-payment-btn" onclick="openAddPayment(${ci})">+ Add Payment</button>
+        <div style="margin-top:10px;">
+          ${c._showNote ? `
+            <textarea id="note-${ci}" placeholder="Write a note about this client…" onblur="saveNote(${ci})" style="width:100%;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;resize:none;min-height:72px;line-height:1.5;">${c.note||''}</textarea>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Auto-saves when you tap away</div>
+          ` : c.note ? `
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px;font-size:13px;line-height:1.5;color:var(--text);">
+              <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">📝 Note</div>
+              ${c.note}
+              <div style="margin-top:8px;"><button onclick="showNoteField(${ci})" style="font-size:11px;color:var(--accent2);background:none;border:none;cursor:pointer;font-weight:600;padding:0;">Edit note</button></div>
+            </div>
+          ` : `
+            <button onclick="showNoteField(${ci})" style="width:100%;padding:9px;border-radius:10px;border:1px dashed var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;">📝 Add Note</button>
+          `}
+        </div>
         <button class="delete-client-btn" onclick="deleteClient(${ci})">🗑 Remove Client</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── NOTES ───────────────────────────────────────────────
+function showNoteField(ci) {
+  // mark client to show note field, then re-render
+  clients[ci]._showNote = true;
+  renderClients();
+  applyOpenCards();
+  // focus the textarea after render
+  setTimeout(() => {
+    const el = document.getElementById('note-'+ci);
+    if (el) el.focus();
+  }, 50);
+}
+
+function saveNote(ci) {
+  const el = document.getElementById('note-'+ci);
+  if (!el) return;
+  clients[ci].note = el.value.trim();
+  clients[ci]._showNote = false;
+  save();
+  // re-render to show "Add Note" button again if note is empty
+  if (!clients[ci].note) {
+    renderClients();
+    applyOpenCards();
+  }
 }
 
 // track which cards are open so re-renders don't collapse them
