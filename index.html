@@ -401,7 +401,17 @@ function bonusInMainCurrency(p) {
   const mainCur = p.currency || '$';
   if (bonusCur === mainCur) return p.bonus;
   const converted = convertCurrency(p.bonus, bonusCur, mainCur);
-  return converted !== null ? converted : p.bonus; // fallback to raw if no rates
+  return converted !== null ? converted : p.bonus;
+}
+
+// Convert full payment value (commission + bonus) to USD
+function paymentToUSD(p) {
+  const mainCur = p.currency || '$';
+  const commUSD = convertCurrency(p.amount, mainCur, '$') ?? p.amount;
+  const bonusUSD = p.bonus && p.bonus > 0
+    ? (convertCurrency(p.bonus, p.bonusCurrency || '£', '$') ?? p.bonus)
+    : 0;
+  return { commUSD, bonusUSD };
 }
 
 const today = new Date();
@@ -657,58 +667,30 @@ function togglePayment(ci, pi, field) {
 
 // ─── DASHBOARD ───────────────────────────────────────────
 function renderDashboard() {
-  // Group by currency for totals
-  const totals = {}; // currency -> { earned, received, pending }
+  // All totals converted to USD
+  let usdEarned = 0, usdReceived = 0, usdPending = 0;
   const upcoming = [];
   clients.forEach(c => {
     c.payments.forEach(p => {
-      const cur = p.currency || '$';
-      if (!totals[cur]) totals[cur] = { earned:0, received:0, pending:0 };
-      const bonus = (p.bonus && p.bonus > 0) ? bonusInMainCurrency(p) : 0;
-      totals[cur].earned += p.amount + bonus;
+      const { commUSD, bonusUSD } = paymentToUSD(p);
+      usdEarned += commUSD + bonusUSD;
       if (p.receivedByMe) {
-        totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
-        if (bonus > 0 && !p.bonusReceived) totals[cur].pending += bonus;
+        usdReceived += commUSD + (p.bonusReceived ? bonusUSD : 0);
+        if (bonusUSD > 0 && !p.bonusReceived) usdPending += bonusUSD;
       } else {
-        totals[cur].pending += p.amount + bonus;
+        usdPending += commUSD + bonusUSD;
         upcoming.push({ clientName: c.name, payment: p });
       }
     });
   });
   upcoming.sort((a,b) => a.payment.date.localeCompare(b.payment.date));
 
-  const currencies = Object.keys(totals);
-  let statsHtml = '';
-  if (currencies.length === 0) {
-    statsHtml = `<div class="stats-row">
-      <div class="stat-card"><div class="stat-label">Total Earned</div><div class="stat-value purple">—</div></div>
-      <div class="stat-card"><div class="stat-label">Received</div><div class="stat-value green">—</div></div>
-      <div class="stat-card full"><div class="stat-label">Still Pending</div><div class="stat-value orange">—</div></div>
-    </div>`;
-  } else if (currencies.length === 1) {
-    const cur = currencies[0]; const t = totals[cur];
-    statsHtml = `<div class="stats-row">
-      <div class="stat-card"><div class="stat-label">Total Earned</div><div class="stat-value purple">${cur}${t.earned.toFixed(2)}</div></div>
-      <div class="stat-card"><div class="stat-label">Received</div><div class="stat-value green">${cur}${t.received.toFixed(2)}</div></div>
-      <div class="stat-card full"><div class="stat-label">Still Pending</div><div class="stat-value orange">${cur}${t.pending.toFixed(2)}</div></div>
-    </div>`;
-  } else {
-    // Multi-currency: show each
-    statsHtml = `<div class="section-title">Totals by Currency</div>`;
-    currencies.forEach(cur => {
-      const t = totals[cur];
-      statsHtml += `<div class="stats-row" style="margin-bottom:8px;">
-        <div class="stat-card full" style="padding:10px 14px;">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;">${CURRENCY_LABELS[cur] || cur}</div>
-          <div style="display:flex;gap:20px;">
-            <div><div class="stat-label">Earned</div><div class="stat-value purple" style="font-size:17px;">${cur}${t.earned.toFixed(2)}</div></div>
-            <div><div class="stat-label">Received</div><div class="stat-value green" style="font-size:17px;">${cur}${t.received.toFixed(2)}</div></div>
-            <div><div class="stat-label">Pending</div><div class="stat-value orange" style="font-size:17px;">${cur}${t.pending.toFixed(2)}</div></div>
-          </div>
-        </div>
-      </div>`;
-    });
-  }
+  const hasClients = clients.length > 0 && clients.some(c => c.payments.length > 0);
+  const statsHtml = `<div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Total Earned</div><div class="stat-value purple">${hasClients ? '$'+usdEarned.toFixed(2) : '—'}</div></div>
+    <div class="stat-card"><div class="stat-label">Received</div><div class="stat-value green">${hasClients ? '$'+usdReceived.toFixed(2) : '—'}</div></div>
+    <div class="stat-card full"><div class="stat-label">Still Pending</div><div class="stat-value orange">${hasClients ? '$'+usdPending.toFixed(2) : '—'}</div></div>
+  </div>`;
 
   document.getElementById('stats-container').innerHTML = statsHtml;
 
@@ -746,20 +728,18 @@ function renderClients() {
   }
   el.innerHTML = filtered.map(c => {
     const ci = clients.indexOf(c);
-    const mainCur = c.payments[0]?.currency || '$';
-    const received = c.payments.reduce((s,p) => {
-      if (!p.receivedByMe) return s;
-      return s + p.amount + (p.bonus && p.bonusReceived ? bonusInMainCurrency(p) : 0);
-    }, 0);
-    const bonusPendingAmt = c.payments.reduce((s,p) => {
-      if (!p.bonus || p.bonus <= 0) return s;
-      if (!p.bonusReceived) return s + bonusInMainCurrency(p);
-      return s;
-    }, 0);
-    const pending = c.payments.reduce((s,p) => {
-      const bp = (p.bonus && !p.bonusReceived ? bonusInMainCurrency(p) : 0);
-      return s + (!p.receivedByMe ? p.amount + bp : bp);
-    }, 0);
+    // All client totals in USD
+    const clientUSD = c.payments.reduce((acc,p) => {
+      const { commUSD, bonusUSD } = paymentToUSD(p);
+      acc.earned += commUSD + bonusUSD;
+      if (p.receivedByMe) {
+        acc.received += commUSD + (p.bonusReceived ? bonusUSD : 0);
+        if (bonusUSD > 0 && !p.bonusReceived) acc.pending += bonusUSD;
+      } else {
+        acc.pending += commUSD + bonusUSD;
+      }
+      return acc;
+    }, { earned:0, received:0, pending:0 });
     const color = avatarColor(c.name);
     return `
     <div class="client-card">
@@ -770,8 +750,8 @@ function renderClients() {
           <div class="client-meta">${c.payments.length} payment${c.payments.length!==1?'s':''}</div>
         </div>
         <div class="client-amount">
-          <div class="amount">${mainCur}${received.toFixed(2)}</div>
-          ${pending > 0 ? `<div class="pending">${mainCur}${pending.toFixed(2)} due${bonusPendingAmt>0?' <span style="font-size:10px;opacity:0.75">(incl. bonus)</span>':''}</div>` : '<div style="font-size:11px;color:var(--green)">✓ Done</div>'}
+          <div class="amount">$${clientUSD.received.toFixed(2)}</div>
+          ${clientUSD.pending > 0 ? `<div class="pending">$${clientUSD.pending.toFixed(2)} due</div>` : '<div style="font-size:11px;color:var(--green)">✓ Done</div>'}
         </div>
         <div class="chevron" id="chevron-${ci}">›</div>
       </div>
@@ -869,29 +849,25 @@ function totalBarHTML(entries, label) {
   if (entries.length === 0) return '';
   // group by currency
   const totals = {}; // cur -> { total, received, pending }
+  // All calendar totals in USD
   entries.forEach(e => {
     const p = e.payment;
-    const cur = p.currency || '$';
-    if (!totals[cur]) totals[cur] = { total:0, received:0, pending:0 };
-    const bonus = (p.bonus && p.bonus > 0) ? bonusInMainCurrency(p) : 0;
-    totals[cur].total += p.amount + bonus;
+    const { commUSD, bonusUSD } = paymentToUSD(p);
+    if (!totals['$']) totals['$'] = { total:0, received:0, pending:0 };
+    totals['$'].total += commUSD + bonusUSD;
     if (p.receivedByMe) {
-      totals[cur].received += p.amount + (p.bonusReceived ? bonus : 0);
-      if (bonus > 0 && !p.bonusReceived) totals[cur].pending += bonus;
+      totals['$'].received += commUSD + (p.bonusReceived ? bonusUSD : 0);
+      if (bonusUSD > 0 && !p.bonusReceived) totals['$'].pending += bonusUSD;
     } else {
-      totals[cur].pending += p.amount + bonus;
+      totals['$'].pending += commUSD + bonusUSD;
     }
   });
-  const currencies = Object.keys(totals);
-  const blocks = currencies.map(cur => {
-    const t = totals[cur];
-    return `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
-      ${currencies.length > 1 ? `<span style="font-size:11px;font-weight:700;color:var(--muted);min-width:28px;">${cur}</span>` : ''}
-      <div><div style="font-size:10px;color:var(--muted);font-weight:600;">TOTAL <span style="font-weight:400;opacity:0.6;">incl. bonus</span></div><div style="font-size:16px;font-weight:800;color:var(--accent2);">${cur}${t.total.toFixed(2)}</div></div>
-      <div><div style="font-size:10px;color:var(--muted);font-weight:600;">RECEIVED</div><div style="font-size:16px;font-weight:800;color:var(--green);">${cur}${t.received.toFixed(2)}</div></div>
-      <div><div style="font-size:10px;color:var(--muted);font-weight:600;">PENDING</div><div style="font-size:16px;font-weight:800;color:var(--orange);">${cur}${t.pending.toFixed(2)}</div></div>
-    </div>`;
-  }).join('<div style="height:1px;background:var(--border);margin:8px 0;"></div>');
+  const t = totals['$'] || { total:0, received:0, pending:0 };
+  const blocks = `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+    <div><div style="font-size:10px;color:var(--muted);font-weight:600;">TOTAL</div><div style="font-size:16px;font-weight:800;color:var(--accent2);">$${t.total.toFixed(2)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:600;">RECEIVED</div><div style="font-size:16px;font-weight:800;color:var(--green);">$${t.received.toFixed(2)}</div></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:600;">PENDING</div><div style="font-size:16px;font-weight:800;color:var(--orange);">$${t.pending.toFixed(2)}</div></div>
+  </div>`;
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;">${blocks}</div>`;
 }
 
