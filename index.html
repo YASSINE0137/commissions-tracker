@@ -185,16 +185,22 @@
 <!-- DASHBOARD -->
 <div class="content active" id="content-dashboard">
   <div id="stats-container"></div>
+  <div class="section-title" style="margin-top:4px;">Earnings by Month</div>
+  <div id="chart-container" style="background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:4px;"></div>
   <div class="section-title">Upcoming Payments</div>
   <div id="upcoming-container"></div>
 </div>
 
 <!-- CLIENTS -->
 <div class="content" id="content-clients">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
     <button class="client-subtab active" id="subtab-active" onclick="switchClientTab('active')" style="margin-bottom:0;">⏳ In Progress</button>
     <button class="client-subtab" id="subtab-done" onclick="switchClientTab('done')" style="margin-bottom:0;">✅ Completed</button>
     <button onclick="openDataDrawer()" style="width:38px;height:38px;flex-shrink:0;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">⋮</button>
+  </div>
+  <div style="position:relative;margin-bottom:14px;">
+    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:15px;pointer-events:none;">🔍</span>
+    <input type="text" id="client-search" placeholder="Search clients…" oninput="renderClients()" style="width:100%;padding:11px 14px 11px 36px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--font);outline:none;" />
   </div>
   <div id="clients-container"></div>
 </div>
@@ -665,6 +671,90 @@ function togglePayment(ci, pi, field) {
   showToast('Updated ✓');
 }
 
+// ─── CHART ───────────────────────────────────────────────
+function renderChart() {
+  const el = document.getElementById('chart-container');
+  if (!el) return;
+
+  // Build last 6 months of data in USD
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    months.push({
+      label: d.toLocaleDateString('en-US', { month: 'short' }),
+      year: d.getFullYear(),
+      month: d.getMonth(),
+      earned: 0,
+      received: 0
+    });
+  }
+
+  clients.forEach(c => {
+    c.payments.forEach(p => {
+      const d = new Date(p.date + 'T00:00:00');
+      const slot = months.find(m => m.year === d.getFullYear() && m.month === d.getMonth());
+      if (!slot) return;
+      const { commUSD, bonusUSD } = paymentToUSD(p);
+      slot.earned += commUSD + bonusUSD;
+      if (p.receivedByMe) slot.received += commUSD + (p.bonusReceived ? bonusUSD : 0);
+    });
+  });
+
+  const maxVal = Math.max(...months.map(m => m.earned), 1);
+  const barW = 100 / months.length;
+
+  // SVG chart
+  const svgH = 110;
+  const svgW = 100; // viewBox units
+  const padB = 22; // bottom for labels
+  const padT = 10;
+  const chartH = svgH - padB - padT;
+
+  const bars = months.map((m, i) => {
+    const x = i * barW;
+    const earnedH = (m.earned / maxVal) * chartH;
+    const receivedH = (m.received / maxVal) * chartH;
+    const bw = barW - 2;
+    const isCurrentMonth = m.year === today.getFullYear() && m.month === today.getMonth();
+    return `
+      <!-- earned bar (background) -->
+      <rect x="${x + 1}" y="${padT + chartH - earnedH}" width="${bw}" height="${earnedH}"
+        rx="3" fill="${isCurrentMonth ? 'rgba(124,106,247,0.25)' : 'rgba(124,106,247,0.15)'}" />
+      <!-- received bar (foreground) -->
+      <rect x="${x + 1}" y="${padT + chartH - receivedH}" width="${bw}" height="${receivedH}"
+        rx="3" fill="${isCurrentMonth ? '#7c6af7' : 'rgba(124,106,247,0.55)'}" />
+      <!-- label -->
+      <text x="${x + barW/2}" y="${svgH - 4}" text-anchor="middle"
+        font-size="6" fill="${isCurrentMonth ? '#a599ff' : '#7a7a99'}" font-weight="${isCurrentMonth ? '700' : '400'}">${m.label}</text>
+      <!-- amount on top if earned > 0 -->
+      ${m.earned > 0 ? `<text x="${x + barW/2}" y="${padT + chartH - earnedH - 2}" text-anchor="middle"
+        font-size="5" fill="#a599ff">$${m.earned >= 1000 ? (m.earned/1000).toFixed(1)+'k' : m.earned.toFixed(0)}</text>` : ''}
+    `;
+  }).join('');
+
+  // horizontal gridlines
+  const gridLines = [0.25, 0.5, 0.75, 1].map(frac => {
+    const y = padT + chartH - frac * chartH;
+    const val = frac * maxVal;
+    return `<line x1="0" y1="${y}" x2="${svgW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="0.5"/>`;
+  }).join('');
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${svgW} ${svgH}" style="width:100%;display:block;">
+      ${gridLines}
+      ${bars}
+    </svg>
+    <div style="display:flex;gap:14px;margin-top:10px;">
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+        <div style="width:10px;height:10px;border-radius:3px;background:#7c6af7;"></div> Received
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+        <div style="width:10px;height:10px;border-radius:3px;background:rgba(124,106,247,0.2);"></div> Expected
+      </div>
+    </div>
+  `;
+}
+
 // ─── DASHBOARD ───────────────────────────────────────────
 function renderDashboard() {
   // All totals converted to USD
@@ -693,6 +783,7 @@ function renderDashboard() {
   </div>`;
 
   document.getElementById('stats-container').innerHTML = statsHtml;
+  renderChart();
 
   const upEl = document.getElementById('upcoming-container');
   if (upcoming.length === 0) {
@@ -721,7 +812,12 @@ function renderClients() {
     el.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">No clients yet</div><div class="empty-sub">Tap + to add your first client</div></div>`;
     return;
   }
-  const filtered = clients.filter(c => clientFilter==='done' ? isClientDone(c) : !isClientDone(c)).slice().reverse();
+  const searchEl = document.getElementById('client-search');
+  const query = (searchEl ? searchEl.value : '').toLowerCase().trim();
+  const filtered = clients
+    .filter(c => clientFilter==='done' ? isClientDone(c) : !isClientDone(c))
+    .filter(c => !query || c.name.toLowerCase().includes(query))
+    .slice().reverse();
   if (filtered.length === 0) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">${clientFilter==='done'?'✅':'⏳'}</div><div class="empty-title">${clientFilter==='done'?'No completed clients yet':'All clients completed!'}</div></div>`;
     return;
