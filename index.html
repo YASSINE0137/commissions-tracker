@@ -721,7 +721,7 @@ function renderClients() {
     el.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">No clients yet</div><div class="empty-sub">Tap + to add your first client</div></div>`;
     return;
   }
-  const filtered = clients.filter(c => clientFilter==='done' ? isClientDone(c) : !isClientDone(c));
+  const filtered = clients.filter(c => clientFilter==='done' ? isClientDone(c) : !isClientDone(c)).slice().reverse();
   if (filtered.length === 0) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">${clientFilter==='done'?'✅':'⏳'}</div><div class="empty-title">${clientFilter==='done'?'No completed clients yet':'All clients completed!'}</div></div>`;
     return;
@@ -790,17 +790,22 @@ function renderClients() {
 const openCards = new Set();
 
 function toggleClient(ci) {
-  if (openCards.has(ci)) openCards.delete(ci);
-  else openCards.add(ci);
-  applyOpenCards();
+  const d = document.getElementById('detail-'+ci);
+  const ch = document.getElementById('chevron-'+ci);
+  if (!d) return;
+  const isOpen = d.classList.toggle('open');
+  if (ch) ch.classList.toggle('open', isOpen);
+  if (isOpen) openCards.add(ci);
+  else openCards.delete(ci);
 }
 
 function applyOpenCards() {
+  // After re-render, restore open state for cards that were open
   openCards.forEach(ci => {
     const d = document.getElementById('detail-'+ci);
     const ch = document.getElementById('chevron-'+ci);
-    if (d) { d.classList.add('open'); }
-    if (ch) { ch.classList.add('open'); }
+    if (d) d.classList.add('open');
+    if (ch) ch.classList.add('open');
   });
 }
 
