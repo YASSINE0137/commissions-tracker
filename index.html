@@ -185,6 +185,7 @@
 <!-- DASHBOARD -->
 <div class="content active" id="content-dashboard">
   <div id="stats-container"></div>
+  <div id="goal-container" style="margin-bottom:12px;"></div>
   <div class="section-title" style="margin-top:4px;">Earnings by Month</div>
   <div id="chart-container" style="background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:4px;"></div>
   <div class="section-title">Upcoming Payments</div>
@@ -337,6 +338,21 @@
     </div>
     <button class="submit-btn" onclick="saveAddPayment()">Add Payment ✓</button>
     <button class="cancel-btn" onclick="closeModal('addpay-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- GOAL MODAL -->
+<div class="modal-overlay" id="goal-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Monthly Goal</div>
+    <div class="form-group">
+      <label>Target amount this month ($)</label>
+      <input type="number" id="gm-input" placeholder="e.g. 600" />
+    </div>
+    <button class="submit-btn" onclick="saveGoal()">Save Goal 🎯</button>
+    <button class="cancel-btn" onclick="clearGoal()" style="color:var(--red);border-color:rgba(245,99,66,0.3);">Remove Goal</button>
+    <button class="cancel-btn" onclick="closeModal('goal-modal')">Cancel</button>
   </div>
 </div>
 
@@ -672,6 +688,87 @@ function togglePayment(ci, pi, field) {
   showToast('Updated ✓');
 }
 
+// ─── MONTHLY GOAL ────────────────────────────────────────
+let monthlyGoal = parseFloat(localStorage.getItem('monthly_goal') || '0');
+
+function renderGoal() {
+  const el = document.getElementById('goal-container');
+  if (!el) return;
+
+  // Current month received in USD
+  const curY = today.getFullYear(), curM = today.getMonth();
+  let thisMonthReceived = 0;
+  clients.forEach(c => {
+    c.payments.forEach(p => {
+      const d = new Date(p.date + 'T00:00:00');
+      if (d.getFullYear() === curY && d.getMonth() === curM && p.receivedByMe) {
+        const { commUSD, bonusUSD } = paymentToUSD(p);
+        thisMonthReceived += commUSD + (p.bonusReceived ? bonusUSD : 0);
+      }
+    });
+  });
+
+  if (!monthlyGoal) {
+    el.innerHTML = `
+      <div style="background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="font-size:13px;color:var(--muted);">🎯 Set a monthly goal</div>
+        <button onclick="openGoalModal()" style="padding:7px 14px;border-radius:8px;border:1px solid var(--accent);background:rgba(124,106,247,0.12);color:var(--accent2);font-size:12px;font-weight:700;cursor:pointer;">Set Goal</button>
+      </div>`;
+    return;
+  }
+
+  const pct = Math.min((thisMonthReceived / monthlyGoal) * 100, 100);
+  const done = thisMonthReceived >= monthlyGoal;
+  const remaining = Math.max(monthlyGoal - thisMonthReceived, 0);
+  const barColor = done ? 'var(--green)' : pct > 60 ? '#f5a623' : 'var(--accent)';
+  const monthName = today.toLocaleDateString('en-US', { month: 'long' });
+
+  el.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);padding:14px 16px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${monthName} Goal</div>
+          <div style="font-size:18px;font-weight:800;margin-top:1px;">
+            $${thisMonthReceived.toFixed(0)} <span style="font-size:13px;color:var(--muted);font-weight:500;">/ $${monthlyGoal.toFixed(0)}</span>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          ${done
+            ? `<div style="font-size:22px;">🏆</div><div style="font-size:10px;color:var(--green);font-weight:700;">CRUSHED IT</div>`
+            : `<div style="font-size:18px;font-weight:800;color:var(--orange);">$${remaining.toFixed(0)}</div><div style="font-size:10px;color:var(--muted);font-weight:600;">to go</div>`
+          }
+        </div>
+      </div>
+      <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;transition:width 0.4s;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;">
+        <div style="font-size:11px;color:var(--muted);">${pct.toFixed(0)}% done</div>
+        <button onclick="openGoalModal()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;">Edit goal</button>
+      </div>
+    </div>`;
+}
+
+function openGoalModal() {
+  document.getElementById('gm-input').value = monthlyGoal || '';
+  document.getElementById('goal-modal').classList.add('open');
+}
+function saveGoal() {
+  const val = parseFloat(document.getElementById('gm-input').value);
+  if (!val || val <= 0) { showToast('Enter a valid amount!'); return; }
+  monthlyGoal = val;
+  localStorage.setItem('monthly_goal', String(val));
+  closeModal('goal-modal');
+  renderGoal();
+  showToast('Goal set! 🎯');
+}
+function clearGoal() {
+  monthlyGoal = 0;
+  localStorage.removeItem('monthly_goal');
+  closeModal('goal-modal');
+  renderGoal();
+}
+
 // ─── CHART ───────────────────────────────────────────────
 function renderChart() {
   const el = document.getElementById('chart-container');
@@ -701,14 +798,31 @@ function renderChart() {
     });
   });
 
+  // Growth vs previous month (comparing earned/expected)
+  const currentMonth = months[months.length - 1];
+  const prevMonth = months[months.length - 2];
+  let growthHTML = '';
+  if (prevMonth && (currentMonth.earned > 0 || prevMonth.earned > 0)) {
+    if (prevMonth.earned === 0) {
+      growthHTML = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;background:rgba(62,207,142,0.15);color:var(--green);font-size:11px;font-weight:700;">🚀 New month</div>`;
+    } else {
+      const diff = currentMonth.earned - prevMonth.earned;
+      const pct = Math.abs((diff / prevMonth.earned) * 100).toFixed(0);
+      const up = diff >= 0;
+      const color = up ? 'var(--green)' : 'var(--red)';
+      const bg = up ? 'rgba(62,207,142,0.15)' : 'rgba(245,99,66,0.12)';
+      const arrow = up ? '▲' : '▼';
+      const label = up ? `+${pct}% vs last month` : `-${pct}% vs last month`;
+      growthHTML = `<div style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;background:${bg};color:${color};font-size:11px;font-weight:700;">${arrow} ${label}</div>`;
+    }
+  }
+
   const maxVal = Math.max(...months.map(m => m.earned), 1);
   const barW = 100 / months.length;
-
-  // SVG chart
   const svgH = 110;
-  const svgW = 100; // viewBox units
-  const padB = 22; // bottom for labels
-  const padT = 10;
+  const svgW = 100;
+  const padB = 22;
+  const padT = 12;
   const chartH = svgH - padB - padT;
 
   const bars = months.map((m, i) => {
@@ -718,41 +832,38 @@ function renderChart() {
     const bw = barW - 2;
     const isCurrentMonth = m.year === today.getFullYear() && m.month === today.getMonth();
     return `
-      <!-- earned bar (background) -->
-      <rect x="${x + 1}" y="${padT + chartH - earnedH}" width="${bw}" height="${earnedH}"
-        rx="3" fill="${isCurrentMonth ? 'rgba(124,106,247,0.25)' : 'rgba(124,106,247,0.15)'}" />
-      <!-- received bar (foreground) -->
-      <rect x="${x + 1}" y="${padT + chartH - receivedH}" width="${bw}" height="${receivedH}"
-        rx="3" fill="${isCurrentMonth ? '#7c6af7' : 'rgba(124,106,247,0.55)'}" />
-      <!-- label -->
+      <rect x="${x+1}" y="${padT + chartH - earnedH}" width="${bw}" height="${earnedH}"
+        rx="3" fill="${isCurrentMonth ? 'rgba(124,106,247,0.3)' : 'rgba(124,106,247,0.15)'}" />
+      <rect x="${x+1}" y="${padT + chartH - receivedH}" width="${bw}" height="${receivedH}"
+        rx="3" fill="${isCurrentMonth ? '#7c6af7' : 'rgba(124,106,247,0.5)'}" />
       <text x="${x + barW/2}" y="${svgH - 4}" text-anchor="middle"
         font-size="6" fill="${isCurrentMonth ? '#a599ff' : '#7a7a99'}" font-weight="${isCurrentMonth ? '700' : '400'}">${m.label}</text>
-      <!-- amount on top if earned > 0 -->
       ${m.earned > 0 ? `<text x="${x + barW/2}" y="${padT + chartH - earnedH - 2}" text-anchor="middle"
-        font-size="5" fill="#a599ff">$${m.earned >= 1000 ? (m.earned/1000).toFixed(1)+'k' : m.earned.toFixed(0)}</text>` : ''}
+        font-size="5" fill="${isCurrentMonth ? '#a599ff' : '#7a7a99'}">$${m.earned >= 1000 ? (m.earned/1000).toFixed(1)+'k' : m.earned.toFixed(0)}</text>` : ''}
     `;
   }).join('');
 
-  // horizontal gridlines
-  const gridLines = [0.25, 0.5, 0.75, 1].map(frac => {
+  const gridLines = [0.25,0.5,0.75,1].map(frac => {
     const y = padT + chartH - frac * chartH;
-    const val = frac * maxVal;
     return `<line x1="0" y1="${y}" x2="${svgW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="0.5"/>`;
   }).join('');
 
   el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;gap:12px;">
+        <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);">
+          <div style="width:9px;height:9px;border-radius:2px;background:#7c6af7;"></div> Received
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);">
+          <div style="width:9px;height:9px;border-radius:2px;background:rgba(124,106,247,0.25);"></div> Expected
+        </div>
+      </div>
+      ${growthHTML}
+    </div>
     <svg viewBox="0 0 ${svgW} ${svgH}" style="width:100%;display:block;">
       ${gridLines}
       ${bars}
     </svg>
-    <div style="display:flex;gap:14px;margin-top:10px;">
-      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
-        <div style="width:10px;height:10px;border-radius:3px;background:#7c6af7;"></div> Received
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
-        <div style="width:10px;height:10px;border-radius:3px;background:rgba(124,106,247,0.2);"></div> Expected
-      </div>
-    </div>
   `;
 }
 
@@ -784,6 +895,7 @@ function renderDashboard() {
   </div>`;
 
   document.getElementById('stats-container').innerHTML = statsHtml;
+  renderGoal();
   renderChart();
 
   const upEl = document.getElementById('upcoming-container');
