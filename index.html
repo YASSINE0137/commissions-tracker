@@ -236,11 +236,15 @@
       <label>Client Name</label>
       <input type="text" id="f-name" placeholder="e.g. Sarah Johnson" />
     </div>
+    <div class="form-group">
+      <label>Instagram Profile URL <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <input type="url" id="f-instagram" placeholder="https://instagram.com/username" />
+    </div>
 
     <div class="divider"></div>
     <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:12px;">💳 Payments</div>
     <div class="pay-builder" id="pay-builder"></div>
-    <button class="add-row-btn" onclick="addPaymentRow()">+ Add Another Payment</button>
+    <button class="add-row-btn" onclick="addPaymentRowAuto()">+ Add Another Payment</button>
 
     <button class="submit-btn" onclick="addClient()" style="margin-top:20px;">Add Client ✓</button>
     <button class="cancel-btn" onclick="closeModal('add-modal')">Cancel</button>
@@ -518,8 +522,10 @@ function addPaymentRow(label='', currency='$', amount='', date='', bonus='', bon
   const div = document.createElement('div');
   div.className = 'pay-builder-row';
   div.id = 'prow-'+id;
+  div.setAttribute('draggable','true');
   div.innerHTML = `
     <div class="row-title">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
       <span id="prow-title-${id}">Payment ${id}</span>
       <button class="remove-pay" onclick="removePayRow(${id})">×</button>
     </div>
@@ -548,8 +554,51 @@ function addPaymentRow(label='', currency='$', amount='', date='', bonus='', bon
         <input type="number" id="prow-bonus-${id}" value="" placeholder="0 = no bonus" style="flex:1;" />
       </div>
     </div>`;
-  document.getElementById('pay-builder').appendChild(div);
+  const builder = document.getElementById('pay-builder');
+  builder.appendChild(div);
   if (label) updateRowTitle(id);
+
+  // drag events
+  div.addEventListener('dragstart', e => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', div.id);
+    setTimeout(() => div.classList.add('dragging'), 0);
+  });
+  div.addEventListener('dragend', () => div.classList.remove('dragging'));
+  div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+  div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
+  div.addEventListener('drop', e => {
+    e.preventDefault();
+    div.classList.remove('drag-over');
+    const fromId = e.dataTransfer.getData('text/plain');
+    const fromEl = document.getElementById(fromId);
+    if (fromEl && fromEl !== div) {
+      builder.insertBefore(fromEl, div);
+    }
+  });
+}
+
+function addPaymentRowAuto() {
+  const rows = document.querySelectorAll('#pay-builder .pay-builder-row');
+  if (rows.length === 0) { addPaymentRow(); return; }
+  const lastRow = rows[rows.length - 1];
+  const lastId = lastRow.id.replace('prow-','');
+  const lastLabel = document.getElementById('prow-label-'+lastId).value.trim();
+  const lastDate = document.getElementById('prow-date-'+lastId).value;
+  const lastCurrency = document.getElementById('prow-currency-'+lastId).value;
+
+  // Auto-label: increment trailing number
+  let autoLabel = '';
+  if (lastLabel) {
+    const match = lastLabel.match(/^(.*?)(\d+)(\s*)$/);
+    if (match) autoLabel = match[1] + (parseInt(match[2]) + 1) + match[3];
+    else autoLabel = lastLabel;
+  }
+
+  // Auto-date: same day next month
+  const autoDate = lastDate ? addMonths(lastDate, 1) : toDateStr(today);
+
+  addPaymentRow(autoLabel, lastCurrency, '', autoDate);
 }
 
 function updateRowTitle(id) {
@@ -564,6 +613,7 @@ function removePayRow(id) {
 
 function openAddModal() {
   document.getElementById('f-name').value = '';
+  document.getElementById('f-instagram').value = '';
   document.getElementById('pay-builder').innerHTML = '';
   payRowCount = 0;
   // Add a default first payment row
@@ -593,7 +643,8 @@ function addClient() {
     payments.push({ id: Date.now()+payments.length, label, currency, amount, date, bonus, bonusCurrency, sentToCoach: false, receivedByMe: false, bonusReceived: false });
   }
 
-  clients.push({ id: Date.now(), name, payments, note: '' });
+  const instagram = document.getElementById('f-instagram').value.trim();
+  clients.push({ id: Date.now(), name, payments, note: '', instagram });
   save();
   closeModal('add-modal');
   showToast('Client added! 🎉');
@@ -633,10 +684,28 @@ function saveEditPayment() {
 // ─── ADD PAYMENT TO EXISTING CLIENT ──────────────────────
 function openAddPayment(ci) {
   addPayTarget = ci;
-  document.getElementById('ap-label').value = '';
-  document.getElementById('ap-currency').value = '$';
+  const payments = clients[ci].payments;
+  const last = payments.length > 0 ? payments[payments.length - 1] : null;
+
+  // Auto-date: same day next month from last payment
+  const autoDate = last ? addMonths(last.date, 1) : toDateStr(today);
+
+  // Auto-label: increment trailing number if present
+  let autoLabel = '';
+  if (last && last.label) {
+    const match = last.label.match(/^(.*?)(\d+)(\s*)$/);
+    if (match) {
+      autoLabel = match[1] + (parseInt(match[2]) + 1) + match[3];
+    }
+  }
+
+  // Auto-currency: same as last payment
+  const autoCurrency = last ? (last.currency || '$') : '$';
+
+  document.getElementById('ap-label').value = autoLabel;
+  document.getElementById('ap-currency').value = autoCurrency;
   document.getElementById('ap-amount').value = '';
-  document.getElementById('ap-date').value = toDateStr(today);
+  document.getElementById('ap-date').value = autoDate;
   document.getElementById('ap-bonus').value = '';
   document.getElementById('ap-bonus-currency').value = '£';
   document.getElementById('addpay-modal').classList.add('open');
@@ -953,7 +1022,10 @@ function renderClients() {
     return `
     <div class="client-card">
       <div class="client-header" onclick="toggleClient(${ci})">
-        <div class="client-avatar" style="background:${color}">${initials(c.name)}</div>
+        ${c.instagram
+          ? `<a href="${c.instagram}" target="_blank" rel="noopener" style="text-decoration:none;"><div class="client-avatar" style="background:${color};cursor:pointer;" title="Open Instagram">${initials(c.name)}</div></a>`
+          : `<div class="client-avatar" style="background:${color}">${initials(c.name)}</div>`
+        }
         <div class="client-info">
           <div class="client-name">${c.name}</div>
           <div class="client-meta">${c.payments.length} payment${c.payments.length!==1?'s':''}</div>
@@ -983,6 +1055,8 @@ function renderClients() {
               <button class="toggle-btn" onclick="togglePayment(${ci},${pi},'received')" ${!p.sentToCoach?'disabled':''}>${p.receivedByMe?'Undo':'Got it!'}</button>
               ${p.bonus && p.bonus > 0 ? `<button class="toggle-btn" style="background:rgba(245,163,35,0.12);border-color:rgba(245,163,35,0.3);color:var(--orange);" onclick="togglePayment(${ci},${pi},'bonus')" ${!p.receivedByMe?'disabled':''}>${p.bonusReceived?'Undo bonus':'Got bonus!'}</button>` : ''}
               <div class="icon-row">
+                <button class="icon-btn" onclick="movePayment(${ci},${pi},-1)" ${pi===0?'disabled style="opacity:0.3"':''} title="Move up">↑</button>
+                <button class="icon-btn" onclick="movePayment(${ci},${pi},1)" ${pi===c.payments.length-1?'disabled style="opacity:0.3"':''} title="Move down">↓</button>
                 <button class="icon-btn edit" onclick="openEditPayment(${ci},${pi})">✏️</button>
                 <button class="icon-btn del" onclick="deletePayment(${ci},${pi})">🗑</button>
               </div>
@@ -1007,6 +1081,19 @@ function renderClients() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── REORDER PAYMENTS ────────────────────────────────────
+function movePayment(ci, pi, dir) {
+  const payments = clients[ci].payments;
+  const newIndex = pi + dir;
+  if (newIndex < 0 || newIndex >= payments.length) return;
+  const temp = payments[pi];
+  payments[pi] = payments[newIndex];
+  payments[newIndex] = temp;
+  save();
+  renderClients();
+  applyOpenCards();
 }
 
 // ─── NOTES ───────────────────────────────────────────────
